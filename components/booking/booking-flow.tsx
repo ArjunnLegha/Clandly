@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock, User } from "lucide-react";
-import { fromUTC } from "@/lib/timezone";
+import { convertUTCToUserTime, formatUtcInterval12h, getUserTimezone } from "@/lib/timezone-utils";
 
 export type PublicEvent = {
   id: string;
@@ -41,12 +41,8 @@ type Slot = {
   isBooked: boolean;
 };
 
-function formatLocalLabel(utcIso: string): string {
-  const local = fromUTC(new Date(utcIso), Intl.DateTimeFormat().resolvedOptions().timeZone);
-  return local.time;
-}
-
 export function BookingFlow({ event }: { event: PublicEvent }) {
+  const userTz = getUserTimezone();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [slots, setSlots] = useState<Slot[]>([]);
@@ -60,7 +56,7 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
   const [slotsError, setSlotsError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{
     date: string;
-    startTime: string;
+    startUtc: string;
     name: string;
     email: string;
   } | null>(null);
@@ -125,7 +121,7 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
       if (!res.ok) throw new Error(data.error ?? "Booking failed");
       setConfirmed({
         date: selectedDate,
-        startTime: selectedSlot.localStart,
+        startUtc: selectedSlot.utcStart,
         name,
         email,
       });
@@ -156,7 +152,7 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
                 <Clock className="h-4 w-4 shrink-0" />
                 <span>{event.duration} minutes</span>
               </div>
-              <div className="mt-1 flex items-center gap-2">
+              <div className="mt-1 flex items-center gap-2 text-xs text-slate-500">
                 <CalendarDays className="h-4 w-4 shrink-0" />
                 <span>Host timezone: {event.timezone}</span>
               </div>
@@ -169,6 +165,9 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
         </Card>
 
         <div className="space-y-6">
+          <p className="text-sm text-slate-600">
+            All times are shown in your local timezone ({userTz}).
+          </p>
           {(error || slotsError) && (
             <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
               {error ?? slotsError}
@@ -179,7 +178,7 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
             <Card className="rounded-lg border-slate-200 bg-white shadow-sm">
               <CardHeader className="p-6 pb-2">
                 <CardTitle className="text-lg">Select date & time</CardTitle>
-                <CardDescription>Times shown in your local timezone.</CardDescription>
+                <CardDescription>12-hour times in your local timezone ({userTz}).</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6 p-6">
                 <div className="flex items-center justify-between">
@@ -275,8 +274,8 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
                             }}
                           >
                             {s.isBooked
-                              ? `${formatLocalLabel(s.utcStart)} - ${s.localEnd} (Booked)`
-                              : `${formatLocalLabel(s.utcStart)} - ${s.localEnd}`}
+                              ? `${formatUtcInterval12h(s.utcStart, event.duration, userTz)}`
+                              : formatUtcInterval12h(s.utcStart, event.duration, userTz)}
                           </Button>
                         ))}
                       </div>
@@ -292,7 +291,8 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
               <CardHeader className="p-6 pb-2">
                 <CardTitle className="text-lg">Your details</CardTitle>
                 <CardDescription>
-                  {format(new Date(selectedDate + "T12:00:00"), "MMM d, yyyy")} at {formatLocalLabel(selectedSlot.utcStart)}
+                  {format(new Date(selectedDate + "T12:00:00"), "MMM d, yyyy")} at{" "}
+                  {convertUTCToUserTime(new Date(selectedSlot.utcStart), userTz)}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4 p-6">
@@ -357,8 +357,8 @@ export function BookingFlow({ event }: { event: PublicEvent }) {
                   <span className="font-medium">{confirmed.name}</span> ({confirmed.email})
                 </p>
                 <p>
-                  {format(new Date(confirmed.date + "T12:00:00"), "MMMM d, yyyy")} · {confirmed.startTime} ·{" "}
-                  {event.duration} min with {event.hostName}
+                  {format(new Date(confirmed.date + "T12:00:00"), "MMMM d, yyyy")} ·{" "}
+                  {convertUTCToUserTime(new Date(confirmed.startUtc), userTz)} · {event.duration} min with {event.hostName}
                 </p>
               </CardContent>
             </Card>
